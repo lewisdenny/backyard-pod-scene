@@ -1,0 +1,11 @@
+version: '3'
+
+tasks:
+  serve:
+    desc: Run the local static server and print the browser URL.
+    silent: true
+    cmds:
+      - |
+        url="http://127.0.0.1:4173/"
+        printf '\nBackyard Pod Scene local server:\n  %s\n\nOpen this URL in your browser.\n\n' "$url"
+        python3 -m http.server 4173 --bind 127.0.0.1
