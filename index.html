@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Backyard Pod Orbit Scene</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050505;
+      }
+
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .scene-toolbar {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        pointer-events: none;
+      }
+
+      .scene-toolbar button {
+        pointer-events: auto;
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 8px;
+        background: rgba(5, 5, 5, 0.76);
+        color: #f4efe8;
+        font: 600 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        min-width: 92px;
+        height: 36px;
+        padding: 0 13px;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+
+      .scene-toolbar button:hover {
+        background: rgba(24, 24, 24, 0.9);
+      }
+
+      .scene-toolbar button:focus-visible {
+        outline: 2px solid #7a8cff;
+        outline-offset: 2px;
+      }
+
+      .scene-toolbar button.is-active {
+        border-color: rgba(120, 140, 255, 0.82);
+        background: rgba(25, 31, 58, 0.92);
+      }
+
+      .pov-reticle {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        z-index: 9;
+        width: 12px;
+        height: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.68);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+      }
+
+      .pov-reticle[hidden] {
+        display: none;
+      }
+
+      .light-panel {
+        position: fixed;
+        top: 64px;
+        left: 16px;
+        z-index: 12;
+        width: min(300px, calc(100vw - 32px));
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        background: rgba(8, 9, 11, 0.92);
+        color: #f4efe8;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.46);
+        font: 13px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .light-panel[hidden] {
+        display: none;
+      }
+
+      .light-panel header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+        font-weight: 700;
+      }
+
+      .light-panel button {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #f4efe8;
+        width: 28px;
+        height: 28px;
+        cursor: pointer;
+      }
+
+      .light-control {
+        display: grid;
+        gap: 6px;
+        margin-top: 11px;
+      }
+
+      .light-control label {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        color: rgba(244, 239, 232, 0.82);
+      }
+
+      .light-control input[type="range"] {
+        width: 100%;
+      }
+
+      .light-toggle {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scene-toolbar">
+      <button id="povButton" type="button" title="Enter first-person POV mode" aria-pressed="false">Enter POV</button>
+      <button id="wallCutawayButton" type="button" title="Toggle wall transparency" aria-pressed="false">Wall Cutaway</button>
+    </div>
+    <div id="povReticle" class="pov-reticle" hidden></div>
+    <section id="lightPanel" class="light-panel" hidden aria-label="Downlight controls">
+      <header>
+        <span>Downlights</span>
+        <button id="closeLightPanel" type="button" aria-label="Close downlight controls">x</button>
+      </header>
+      <label class="light-toggle">
+        <input id="lightPower" type="checkbox" checked />
+        <span>Lights on</span>
+      </label>
+      <div class="light-control">
+        <label for="lightBrightness">
+          <span>Brightness</span>
+          <span id="lightBrightnessValue">100%</span>
+        </label>
+        <input id="lightBrightness" type="range" min="0" max="100" value="100" />
+      </div>
+      <div class="light-control">
+        <label for="lightTemperature">
+          <span>Temperature</span>
+          <span id="lightTemperatureValue">3000K</span>
+        </label>
+        <input id="lightTemperature" type="range" min="2200" max="6500" value="3000" step="50" />
+      </div>
+      <div class="light-control">
+        <label for="lightColor">
+          <span>Color tint</span>
+        </label>
+        <input id="lightColor" type="color" value="#ffffff" />
+      </div>
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.177.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="./scene.js"></script>
+  </body>
+</html>
