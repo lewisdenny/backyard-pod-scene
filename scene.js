@@ -33,6 +33,19 @@ const POV_BOUNDS = {
 const lightSwitchPosition = new THREE.Vector3(-1.28, 1.18, zFront + 0.022);
 const baseDownlightIntensity = 1.25;
 const baseDownlightEmissiveIntensity = 2.8;
+const exteriorGrassWidth = 14;
+const exteriorGrassDepth = 10;
+const exteriorGroundY = -0.026;
+const exteriorStepWidth = doorOpeningWidth + 0.48;
+const exteriorStepDepth = 0.78;
+const exteriorStepBackZ = zFront - exteriorWallGap - wallThickness - 0.015;
+const exteriorStepFrontZ = exteriorStepBackZ - exteriorStepDepth;
+const fenceBounds = {
+  minX: -exteriorGrassWidth / 2 + 0.34,
+  maxX: exteriorGrassWidth / 2 - 0.34,
+  minZ: -exteriorGrassDepth / 2 + 0.34,
+  maxZ: exteriorGrassDepth / 2 - 0.34,
+};
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc8ee);
@@ -108,6 +121,8 @@ let lightSwitchRocker = null;
 let ceilingMesh = null;
 let grassGroundMesh = null;
 let grassBladeMesh = null;
+let woodenStepGroup = null;
+let backyardFenceGroup = null;
 
 function clampPovPosition() {
   camera.position.x = THREE.MathUtils.clamp(camera.position.x, POV_BOUNDS.minX, POV_BOUNDS.maxX);
@@ -826,25 +841,39 @@ const rugMat = new THREE.MeshStandardMaterial({
 
 const grassTexture = canvasTexture((ctx, w, h) => {
   const base = ctx.createLinearGradient(0, 0, w, h);
-  base.addColorStop(0, '#1f4b24');
-  base.addColorStop(0.45, '#2d6d31');
-  base.addColorStop(1, '#183d1e');
+  base.addColorStop(0, '#24582a');
+  base.addColorStop(0.38, '#367d34');
+  base.addColorStop(0.72, '#2d6a2d');
+  base.addColorStop(1, '#1a441f');
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, w, h);
 
-  for (let i = 0; i < 22000; i += 1) {
+  for (let i = 0; i < 36000; i += 1) {
     const x = Math.random() * w;
     const y = Math.random() * h;
-    const g = 68 + Math.random() * 72;
-    ctx.fillStyle = `rgba(${22 + Math.random() * 24}, ${g}, ${24 + Math.random() * 28}, ${0.08 + Math.random() * 0.22})`;
-    ctx.fillRect(x, y, 1 + Math.random() * 2.2, 1 + Math.random() * 4.8);
+    const g = 72 + Math.random() * 92;
+    ctx.fillStyle = `rgba(${18 + Math.random() * 34}, ${g}, ${24 + Math.random() * 36}, ${0.08 + Math.random() * 0.26})`;
+    ctx.fillRect(x, y, 0.8 + Math.random() * 2.4, 1.5 + Math.random() * 6.5);
   }
 
-  for (let i = 0; i < 900; i += 1) {
+  for (let stripe = -w; stripe < w * 2; stripe += 128) {
+    const stripeGrad = ctx.createLinearGradient(stripe, 0, stripe + 92, h);
+    stripeGrad.addColorStop(0, 'rgba(222,245,164,0)');
+    stripeGrad.addColorStop(0.48, 'rgba(222,245,164,0.08)');
+    stripeGrad.addColorStop(1, 'rgba(222,245,164,0)');
+    ctx.fillStyle = stripeGrad;
+    ctx.save();
+    ctx.translate(stripe, 0);
+    ctx.rotate(-0.18);
+    ctx.fillRect(0, -h * 0.4, 64, h * 1.8);
+    ctx.restore();
+  }
+
+  for (let i = 0; i < 1600; i += 1) {
     const x = Math.random() * w;
     const y = Math.random() * h;
-    const len = 9 + Math.random() * 26;
-    ctx.strokeStyle = Math.random() > 0.45 ? 'rgba(98,150,63,0.28)' : 'rgba(18,61,24,0.28)';
+    const len = 12 + Math.random() * 34;
+    ctx.strokeStyle = Math.random() > 0.42 ? 'rgba(118,178,67,0.32)' : 'rgba(16,65,26,0.28)';
     ctx.lineWidth = 0.8 + Math.random() * 1.6;
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -852,14 +881,14 @@ const grassTexture = canvasTexture((ctx, w, h) => {
     ctx.stroke();
   }
 
-  ctx.fillStyle = 'rgba(13,33,16,0.18)';
-  for (let i = 0; i < 120; i += 1) {
+  ctx.fillStyle = 'rgba(12,42,17,0.16)';
+  for (let i = 0; i < 170; i += 1) {
     ctx.beginPath();
-    ctx.ellipse(Math.random() * w, Math.random() * h, 12 + Math.random() * 36, 5 + Math.random() * 14, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.ellipse(Math.random() * w, Math.random() * h, 14 + Math.random() * 42, 5 + Math.random() * 15, Math.random() * Math.PI, 0, Math.PI * 2);
     ctx.fill();
   }
 });
-grassTexture.repeat.set(1, 1);
+grassTexture.repeat.set(2.4, 1.8);
 const grassMat = new THREE.MeshStandardMaterial({
   map: grassTexture,
   color: 0xffffff,
@@ -867,9 +896,70 @@ const grassMat = new THREE.MeshStandardMaterial({
   metalness: 0.0,
 });
 const grassBladeMat = new THREE.MeshBasicMaterial({
-  color: 0x5fb849,
+  color: 0x71c24d,
   side: THREE.DoubleSide,
   toneMapped: false,
+  transparent: true,
+  opacity: 0.48,
+  depthWrite: false,
+});
+
+const exteriorTimberTexture = canvasTexture((ctx, w, h) => {
+  const tones = ['#8b5a2b', '#a8743c', '#71471f', '#9a6632', '#5f3919'];
+  ctx.fillStyle = '#6b421d';
+  ctx.fillRect(0, 0, w, h);
+
+  for (let y = 0; y < h; y += 96) {
+    const tone = tones[(y / 96) % tones.length];
+    const grad = ctx.createLinearGradient(0, y, 0, y + 96);
+    grad.addColorStop(0, '#533016');
+    grad.addColorStop(0.2, tone);
+    grad.addColorStop(0.68, tone);
+    grad.addColorStop(1, '#3f2410');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, y, w, 92);
+
+    ctx.strokeStyle = 'rgba(255,214,145,0.16)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < 7; i += 1) {
+      const yy = y + 12 + i * 11 + Math.sin(i + y * 0.03) * 2;
+      ctx.moveTo(0, yy);
+      for (let x = 0; x < w; x += 130) {
+        ctx.bezierCurveTo(x + 32, yy - 4, x + 78, yy + 6, x + 130, yy + Math.sin((x + y) * 0.01) * 4);
+      }
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(19,10,4,0.55)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+});
+exteriorTimberTexture.repeat.set(2.3, 1.15);
+const exteriorTimberMat = new THREE.MeshStandardMaterial({
+  map: exteriorTimberTexture,
+  color: 0xffffff,
+  roughness: 0.64,
+  metalness: 0.03,
+});
+const exteriorTimberDarkMat = new THREE.MeshStandardMaterial({
+  color: 0x4e2f17,
+  roughness: 0.7,
+  metalness: 0.02,
+});
+const fencePaleTimberMat = new THREE.MeshStandardMaterial({
+  color: 0xb9925d,
+  roughness: 0.74,
+  metalness: 0.0,
+});
+const fenceShadowMat = new THREE.MeshStandardMaterial({
+  color: 0x6a4725,
+  roughness: 0.82,
+  metalness: 0.0,
 });
 
 const room = new THREE.Group();
@@ -1102,23 +1192,42 @@ function addDownlights() {
   }
 }
 
+function getExteriorStepExclusion() {
+  return {
+    minX: -exteriorStepWidth / 2 - 0.16,
+    maxX: exteriorStepWidth / 2 + 0.16,
+    minZ: exteriorStepFrontZ - 0.14,
+    maxZ: exteriorStepBackZ + 0.12,
+  };
+}
+
+function isInsideGrassBlockedArea(x, z) {
+  const podExclusion = {
+    minX: xMin - wallThickness - 0.18,
+    maxX: xMax + wallThickness + 0.18,
+    minZ: zFront - wallThickness - 0.18,
+    maxZ: zBack + wallThickness + 0.18,
+  };
+  const stepExclusion = getExteriorStepExclusion();
+  const insidePodPad = x > podExclusion.minX && x < podExclusion.maxX && z > podExclusion.minZ && z < podExclusion.maxZ;
+  const insideStepPad = x > stepExclusion.minX && x < stepExclusion.maxX && z > stepExclusion.minZ && z < stepExclusion.maxZ;
+  return insidePodPad || insideStepPad;
+}
+
 function addExteriorGrass() {
-  const grassWidth = 14;
-  const grassDepth = 10;
-  const grassY = -0.026;
-  grassGroundMesh = new THREE.Mesh(new THREE.PlaneGeometry(grassWidth, grassDepth), grassMat);
+  grassGroundMesh = new THREE.Mesh(new THREE.PlaneGeometry(exteriorGrassWidth, exteriorGrassDepth), grassMat);
   grassGroundMesh.name = 'exterior-procedural-grass-lawn';
   grassGroundMesh.rotation.x = -Math.PI / 2;
-  grassGroundMesh.position.set(0, grassY, 0);
+  grassGroundMesh.position.set(0, exteriorGroundY, 0);
   grassGroundMesh.receiveShadow = true;
   grassGroundMesh.castShadow = false;
   grassGroundMesh.userData.bounds = {
-    min: [-grassWidth / 2, grassY, -grassDepth / 2],
-    max: [grassWidth / 2, grassY, grassDepth / 2],
+    min: [-exteriorGrassWidth / 2, exteriorGroundY, -exteriorGrassDepth / 2],
+    max: [exteriorGrassWidth / 2, exteriorGroundY, exteriorGrassDepth / 2],
   };
   exterior.add(grassGroundMesh);
 
-  const bladeCount = 2400;
+  const bladeCount = 3200;
   const bladeGeometry = new THREE.PlaneGeometry(1, 1, 1, 2);
   bladeGeometry.translate(0, 0.5, 0);
   grassBladeMesh = new THREE.InstancedMesh(bladeGeometry, grassBladeMat, bladeCount);
@@ -1132,22 +1241,19 @@ function addExteriorGrass() {
     minZ: zFront - wallThickness - 0.18,
     maxZ: zBack + wallThickness + 0.18,
   };
+  grassBladeMesh.userData.stepExclusion = getExteriorStepExclusion();
 
   const dummy = new THREE.Object3D();
   let placed = 0;
   for (let i = 0; placed < bladeCount && i < bladeCount * 8; i += 1) {
-    const x = (seededRandom(i, 1) - 0.5) * (grassWidth - 0.35);
-    const z = (seededRandom(i, 2) - 0.5) * (grassDepth - 0.35);
-    const insidePodPad = x > grassBladeMesh.userData.exclusion.minX
-      && x < grassBladeMesh.userData.exclusion.maxX
-      && z > grassBladeMesh.userData.exclusion.minZ
-      && z < grassBladeMesh.userData.exclusion.maxZ;
-    if (insidePodPad) continue;
+    const x = (seededRandom(i, 1) - 0.5) * (exteriorGrassWidth - 0.35);
+    const z = (seededRandom(i, 2) - 0.5) * (exteriorGrassDepth - 0.35);
+    if (isInsideGrassBlockedArea(x, z)) continue;
 
-    const height = 0.038 + seededRandom(i, 3) * 0.074;
-    const width = 0.01 + seededRandom(i, 4) * 0.022;
-    dummy.position.set(x, grassY + 0.004, z);
-    dummy.rotation.set(0, seededRandom(i, 5) * Math.PI * 2, (seededRandom(i, 6) - 0.5) * 0.38);
+    const height = 0.028 + seededRandom(i, 3) * 0.062;
+    const width = 0.007 + seededRandom(i, 4) * 0.015;
+    dummy.position.set(x, exteriorGroundY + 0.004, z);
+    dummy.rotation.set(0, seededRandom(i, 5) * Math.PI * 2, (seededRandom(i, 6) - 0.5) * 0.46);
     dummy.scale.set(width, height, 1);
     dummy.updateMatrix();
     grassBladeMesh.setMatrixAt(placed, dummy.matrix);
@@ -1158,6 +1264,173 @@ function addExteriorGrass() {
   grassBladeMesh.computeBoundingBox();
   grassBladeMesh.computeBoundingSphere();
   exterior.add(grassBladeMesh);
+}
+
+function addWoodenStep() {
+  woodenStepGroup = new THREE.Group();
+  woodenStepGroup.name = 'exterior-door-timber-step';
+  const stepCenterZ = exteriorStepBackZ - exteriorStepDepth / 2;
+  const stepTopY = exteriorGroundY + 0.084;
+  const plankHeight = 0.042;
+  const plankGap = 0.026;
+  const plankCount = 4;
+  const plankDepth = (exteriorStepDepth - plankGap * (plankCount + 1)) / plankCount;
+
+  addBox(
+    woodenStepGroup,
+    'exterior-step-dark-underframe',
+    { x: exteriorStepWidth + 0.08, y: 0.055, z: exteriorStepDepth - 0.06 },
+    { x: 0, y: exteriorGroundY + 0.028, z: stepCenterZ },
+    exteriorTimberDarkMat,
+    true,
+    true,
+  );
+
+  for (let i = 0; i < plankCount; i += 1) {
+    const z = exteriorStepBackZ - plankGap - plankDepth / 2 - i * (plankDepth + plankGap);
+    const plank = addBox(
+      woodenStepGroup,
+      'exterior-step-oiled-hardwood-plank',
+      { x: exteriorStepWidth, y: plankHeight, z: plankDepth },
+      { x: 0, y: stepTopY - plankHeight / 2, z },
+      exteriorTimberMat,
+      true,
+      true,
+    );
+    plank.userData.plankIndex = i;
+  }
+
+  addBox(
+    woodenStepGroup,
+    'exterior-step-front-fascia',
+    { x: exteriorStepWidth + 0.1, y: 0.12, z: 0.055 },
+    { x: 0, y: exteriorGroundY + 0.041, z: exteriorStepFrontZ + 0.03 },
+    exteriorTimberDarkMat,
+    true,
+    true,
+  );
+  addBox(
+    woodenStepGroup,
+    'exterior-step-left-side-cheek',
+    { x: 0.055, y: 0.11, z: exteriorStepDepth - 0.08 },
+    { x: -exteriorStepWidth / 2 - 0.028, y: exteriorGroundY + 0.039, z: stepCenterZ },
+    exteriorTimberDarkMat,
+    true,
+    true,
+  );
+  addBox(
+    woodenStepGroup,
+    'exterior-step-right-side-cheek',
+    { x: 0.055, y: 0.11, z: exteriorStepDepth - 0.08 },
+    { x: exteriorStepWidth / 2 + 0.028, y: exteriorGroundY + 0.039, z: stepCenterZ },
+    exteriorTimberDarkMat,
+    true,
+    true,
+  );
+
+  for (const x of [-exteriorStepWidth * 0.32, exteriorStepWidth * 0.32]) {
+    addBox(
+      woodenStepGroup,
+      'exterior-step-hidden-support-runner',
+      { x: 0.08, y: 0.064, z: exteriorStepDepth - 0.12 },
+      { x, y: exteriorGroundY + 0.005, z: stepCenterZ },
+      materials.black,
+      true,
+      true,
+    );
+  }
+
+  exterior.add(woodenStepGroup);
+}
+
+function addFencePost(group, name, x, z) {
+  const postHeight = 1.22;
+  const post = addBox(
+    group,
+    `${name}-post`,
+    { x: 0.12, y: postHeight, z: 0.12 },
+    { x, y: exteriorGroundY + postHeight / 2, z },
+    fenceShadowMat,
+    true,
+    true,
+  );
+  addBox(
+    group,
+    `${name}-post-cap`,
+    { x: 0.18, y: 0.06, z: 0.18 },
+    { x, y: exteriorGroundY + postHeight + 0.03, z },
+    fencePaleTimberMat,
+    true,
+    true,
+  );
+  return post;
+}
+
+function addFenceRun(group, name, axis, fixed, from, to) {
+  const span = Math.abs(to - from);
+  const center = (from + to) / 2;
+  const railY = [0.41, 0.83];
+  const railThickness = 0.065;
+  const picketSpacing = 0.24;
+  const picketCount = Math.max(2, Math.floor(span / picketSpacing));
+
+  addFencePost(group, `${name}-start`, axis === 'x' ? from : fixed, axis === 'x' ? fixed : from);
+  addFencePost(group, `${name}-end`, axis === 'x' ? to : fixed, axis === 'x' ? fixed : to);
+
+  for (let p = from + 1.35; p < to - 0.4; p += 1.35) {
+    addFencePost(group, `${name}-mid-${Math.round((p - from) * 100)}`, axis === 'x' ? p : fixed, axis === 'x' ? fixed : p);
+  }
+
+  for (const y of railY) {
+    addBox(
+      group,
+      `${name}-horizontal-rail`,
+      axis === 'x' ? { x: span, y: railThickness, z: 0.07 } : { x: 0.07, y: railThickness, z: span },
+      axis === 'x'
+        ? { x: center, y: exteriorGroundY + y, z: fixed }
+        : { x: fixed, y: exteriorGroundY + y, z: center },
+      fenceShadowMat,
+      true,
+      true,
+    );
+  }
+
+  for (let i = 0; i <= picketCount; i += 1) {
+    const t = i / picketCount;
+    const p = THREE.MathUtils.lerp(from + 0.18, to - 0.18, t);
+    const height = 0.86 + seededRandom(i, name.length) * 0.12;
+    const topTilt = (seededRandom(i, name.length + 2) - 0.5) * 0.025;
+    const picket = addBox(
+      group,
+      `${name}-vertical-slat`,
+      axis === 'x' ? { x: 0.07, y: height, z: 0.04 } : { x: 0.04, y: height, z: 0.07 },
+      axis === 'x'
+        ? { x: p, y: exteriorGroundY + height / 2 + 0.08, z: fixed + topTilt }
+        : { x: fixed + topTilt, y: exteriorGroundY + height / 2 + 0.08, z: p },
+      fencePaleTimberMat,
+      true,
+      true,
+    );
+    picket.userData.fenceRun = name;
+  }
+}
+
+function addBackyardFence() {
+  backyardFenceGroup = new THREE.Group();
+  backyardFenceGroup.name = 'exterior-backyard-timber-fence';
+  const gateHalfWidth = 1.42;
+
+  addFenceRun(backyardFenceGroup, 'back-fence', 'x', fenceBounds.maxZ, fenceBounds.minX, fenceBounds.maxX);
+  addFenceRun(backyardFenceGroup, 'left-fence', 'z', fenceBounds.minX, fenceBounds.minZ, fenceBounds.maxZ);
+  addFenceRun(backyardFenceGroup, 'right-fence', 'z', fenceBounds.maxX, fenceBounds.minZ, fenceBounds.maxZ);
+  addFenceRun(backyardFenceGroup, 'front-left-fence', 'x', fenceBounds.minZ, fenceBounds.minX, -gateHalfWidth);
+  addFenceRun(backyardFenceGroup, 'front-right-fence', 'x', fenceBounds.minZ, gateHalfWidth, fenceBounds.maxX);
+
+  for (const x of [-gateHalfWidth, gateHalfWidth]) {
+    addFencePost(backyardFenceGroup, x < 0 ? 'front-gate-left' : 'front-gate-right', x, fenceBounds.minZ);
+  }
+
+  exterior.add(backyardFenceGroup);
 }
 
 function addExterior() {
@@ -1486,8 +1759,21 @@ function setOrbitCamera() {
   orbitControls.update();
 }
 
+function getBackyardExteriorState() {
+  const bounds = getSceneObjectBounds();
+  return {
+    hasWoodenStep: Boolean(woodenStepGroup),
+    hasFence: Boolean(backyardFenceGroup),
+    stepBounds: bounds.filter((item) => item.name.startsWith('exterior-step')),
+    fenceObjectCount: backyardFenceGroup?.children.length ?? 0,
+    fenceBounds,
+  };
+}
+
 addExteriorGrass();
 addExterior();
+addWoodenStep();
+addBackyardFence();
 addRoomShell();
 addOffice();
 addLounge();
@@ -1548,6 +1834,7 @@ window.__podDebug = {
   }),
   getSceneObjectBounds,
   getExteriorGrassState,
+  getBackyardExteriorState,
   isWallCutawayEnabled: () => wallCutawayEnabled,
   setWallCutawayEnabled,
   getDownlightIntensities: () => downlightLights.map((light) => light.intensity),
