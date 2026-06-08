@@ -18,6 +18,7 @@
         display: block;
         width: 100vw;
         height: 100vh;
+        touch-action: none;
       }
 
       .scene-toolbar {
@@ -26,7 +27,9 @@
         left: 16px;
         z-index: 10;
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
+        max-width: calc(100vw - 32px);
         pointer-events: none;
       }
 
@@ -138,14 +141,110 @@
         align-items: center;
         gap: 9px;
       }
+
+      .mobile-pov-controls {
+        position: fixed;
+        inset: 0;
+        z-index: 11;
+        pointer-events: none;
+      }
+
+      .mobile-pov-controls[hidden] {
+        display: none;
+      }
+
+      .mobile-look-pad {
+        position: absolute;
+        inset: 88px 0 86px 42%;
+        pointer-events: auto;
+        touch-action: none;
+      }
+
+      .mobile-move-pad {
+        position: absolute;
+        left: max(14px, env(safe-area-inset-left));
+        bottom: max(18px, env(safe-area-inset-bottom));
+        display: grid;
+        grid-template-columns: repeat(3, 46px);
+        grid-template-rows: repeat(3, 46px);
+        gap: 7px;
+        pointer-events: auto;
+      }
+
+      .mobile-pov-actions {
+        position: absolute;
+        right: max(14px, env(safe-area-inset-right));
+        bottom: max(18px, env(safe-area-inset-bottom));
+        display: flex;
+        gap: 8px;
+        pointer-events: auto;
+      }
+
+      .mobile-pov-controls button {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 8px;
+        background: rgba(5, 5, 5, 0.72);
+        color: #f4efe8;
+        min-width: 46px;
+        height: 46px;
+        padding: 0 14px;
+        font: 700 15px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+        touch-action: none;
+      }
+
+      .mobile-move-pad button {
+        padding: 0;
+      }
+
+      .mobile-move-pad [data-move="forward"] {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .mobile-move-pad [data-move="left"] {
+        grid-column: 1;
+        grid-row: 2;
+      }
+
+      .mobile-move-pad [data-move="back"] {
+        grid-column: 2;
+        grid-row: 3;
+      }
+
+      .mobile-move-pad [data-move="right"] {
+        grid-column: 3;
+        grid-row: 2;
+      }
+
+      @media (hover: hover) and (pointer: fine) {
+        .mobile-pov-controls {
+          display: none;
+        }
+      }
     </style>
   </head>
   <body>
     <div class="scene-toolbar">
       <button id="povButton" type="button" title="Enter first-person POV mode" aria-pressed="false">Enter POV</button>
       <button id="wallCutawayButton" type="button" title="Toggle wall transparency" aria-pressed="false">Wall Cutaway</button>
+      <button id="sim4Button" type="button" title="Toggle Sim4 floorplane mode" aria-pressed="false">Sim4</button>
     </div>
     <div id="povReticle" class="pov-reticle" hidden></div>
+    <div id="mobilePovControls" class="mobile-pov-controls" hidden aria-label="Mobile POV controls">
+      <div id="mobileLookPad" class="mobile-look-pad" aria-hidden="true"></div>
+      <div class="mobile-move-pad" aria-label="Move">
+        <button type="button" data-move="forward" aria-label="Move forward">↑</button>
+        <button type="button" data-move="left" aria-label="Move left">←</button>
+        <button type="button" data-move="right" aria-label="Move right">→</button>
+        <button type="button" data-move="back" aria-label="Move back">↓</button>
+      </div>
+      <div class="mobile-pov-actions">
+        <button id="mobileLightButton" type="button">Light</button>
+        <button id="mobileExitPovButton" type="button">Exit</button>
+      </div>
+    </div>
     <section id="lightPanel" class="light-panel" hidden aria-label="Downlight controls">
       <header>
         <span>Downlights</span>
