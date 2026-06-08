@@ -77,6 +77,7 @@ const povControls = new PointerLockControls(camera, renderer.domElement);
 const clock = new THREE.Clock();
 const povButton = document.getElementById('povButton');
 const wallCutawayButton = document.getElementById('wallCutawayButton');
+const sim4Button = document.getElementById('sim4Button');
 const povReticle = document.getElementById('povReticle');
 const lightPanel = document.getElementById('lightPanel');
 const closeLightPanel = document.getElementById('closeLightPanel');
@@ -86,6 +87,11 @@ const lightBrightnessValue = document.getElementById('lightBrightnessValue');
 const lightTemperature = document.getElementById('lightTemperature');
 const lightTemperatureValue = document.getElementById('lightTemperatureValue');
 const lightColor = document.getElementById('lightColor');
+const mobilePovControls = document.getElementById('mobilePovControls');
+const mobileLookPad = document.getElementById('mobileLookPad');
+const mobileLightButton = document.getElementById('mobileLightButton');
+const mobileExitPovButton = document.getElementById('mobileExitPovButton');
+const isTouchLikeDevice = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 const movement = {
   forward: false,
   back: false,
@@ -99,6 +105,7 @@ const downlightDisks = [];
 const lightSwitchTargets = [];
 const shelfGlowLights = [];
 const screenGlowLights = [];
+const accentGlowLights = [];
 const downlightState = {
   on: true,
   brightness: 1,
@@ -113,6 +120,7 @@ let doorLight = null;
 let isPovMode = false;
 let isLightPanelOpen = false;
 let wallCutawayEnabled = false;
+let sim4FloorplaneEnabled = false;
 let keepPovOnUnlock = false;
 let pointerLockPendingExitOnFailure = false;
 let pointerLockFailureTimer = null;
@@ -123,6 +131,9 @@ let grassGroundMesh = null;
 let grassBladeMesh = null;
 let woodenStepGroup = null;
 let backyardFenceGroup = null;
+let mobileLookPointerId = null;
+let mobileLookLastX = 0;
+let mobileLookLastY = 0;
 
 function clampPovPosition() {
   camera.position.x = THREE.MathUtils.clamp(camera.position.x, POV_BOUNDS.minX, POV_BOUNDS.maxX);
@@ -134,6 +145,7 @@ function setPovCamera() {
   camera.fov = 74;
   camera.position.set(-0.1, POV_EYE_HEIGHT, 0.45);
   camera.rotation.set(0, 0, 0);
+  camera.rotation.order = 'YXZ';
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   clampPovPosition();
@@ -184,6 +196,7 @@ function requestPovPointerLock({ exitOnFailure = true } = {}) {
 function enterPovMode() {
   setPovCamera();
   setPovModeActive(true);
+  if (isTouchLikeDevice) return;
   requestPovPointerLock({ exitOnFailure: true });
 }
 
@@ -204,6 +217,25 @@ function setWallCutawayButtonActive(isActive) {
   wallCutawayButton.title = isActive ? 'Turn wall transparency off' : 'Turn wall transparency on';
 }
 
+function setSim4ButtonActive(isActive) {
+  if (!sim4Button) return;
+  sim4Button.textContent = isActive ? 'Floorplane On' : 'Sim4';
+  sim4Button.classList.toggle('is-active', isActive);
+  sim4Button.setAttribute('aria-pressed', String(isActive));
+  sim4Button.title = isActive ? 'Exit Sim4 floorplane mode' : 'Enter Sim4 floorplane mode';
+}
+
+function setSim4FloorplaneEnabled(isEnabled) {
+  sim4FloorplaneEnabled = Boolean(isEnabled);
+  setSim4ButtonActive(sim4FloorplaneEnabled);
+  for (const object of floorplaneHiddenObjects) {
+    object.visible = !sim4FloorplaneEnabled;
+  }
+  updateCutawayWalls();
+  renderer.render(scene, camera);
+  return sim4FloorplaneEnabled;
+}
+
 function setWallCutawayEnabled(isEnabled) {
   wallCutawayEnabled = Boolean(isEnabled);
   setWallCutawayButtonActive(wallCutawayEnabled);
@@ -219,6 +251,11 @@ function resetMovement() {
   movement.right = false;
 }
 
+function setMobilePovControlsVisible(isVisible) {
+  if (!mobilePovControls) return;
+  mobilePovControls.hidden = !isVisible || !isTouchLikeDevice || isLightPanelOpen;
+}
+
 function setPovModeActive(isActive) {
   isPovMode = isActive;
   updateCeilingMaterial();
@@ -226,6 +263,7 @@ function setPovModeActive(isActive) {
   setPovButtonActive(isActive);
   if (!isActive) closeDownlightPanel({ relock: false });
   if (!isActive) resetMovement();
+  setMobilePovControlsVisible(isActive);
 }
 
 function exitPovMode() {
@@ -250,6 +288,12 @@ if (povButton) {
 if (wallCutawayButton) {
   wallCutawayButton.addEventListener('click', () => {
     setWallCutawayEnabled(!wallCutawayEnabled);
+  });
+}
+
+if (sim4Button) {
+  sim4Button.addEventListener('click', () => {
+    setSim4FloorplaneEnabled(!sim4FloorplaneEnabled);
   });
 }
 
@@ -350,8 +394,13 @@ function applyEnvironmentLighting() {
   for (const light of shelfGlowLights) {
     light.intensity = downlightsOn ? light.userData.dayIntensity : light.userData.darkIntensity;
   }
+  for (const light of accentGlowLights) {
+    light.intensity = downlightsOn ? light.userData.dayIntensity : light.userData.darkIntensity;
+  }
 
   materials.ledBlue.emissiveIntensity = downlightsOn ? 2.3 : 3.1;
+  materials.ledWarm.emissiveIntensity = downlightsOn ? 1.8 : 3.4;
+  materials.ledCyan.emissiveIntensity = downlightsOn ? 1.65 : 3.0;
   renderer.toneMappingExposure = downlightsOn ? 1.42 : 1.08;
   updateCeilingMaterial();
 }
@@ -383,6 +432,7 @@ function openDownlightPanel() {
   isLightPanelOpen = true;
   lightPanel.hidden = false;
   resetMovement();
+  setMobilePovControlsVisible(false);
   if (povReticle) povReticle.hidden = true;
 }
 
@@ -390,7 +440,8 @@ function closeDownlightPanel({ relock = true } = {}) {
   isLightPanelOpen = false;
   if (lightPanel) lightPanel.hidden = true;
   if (povReticle) povReticle.hidden = !isPovMode;
-  if (relock && isPovMode) requestPovPointerLock({ exitOnFailure: false });
+  setMobilePovControlsVisible(isPovMode);
+  if (relock && isPovMode && !isTouchLikeDevice) requestPovPointerLock({ exitOnFailure: false });
 }
 
 function toggleDownlightsFromSwitch() {
@@ -404,6 +455,15 @@ function openDownlightSettingsFromSwitch() {
     keepPovOnUnlock = true;
     povControls.unlock();
   }
+}
+
+function rotatePovCamera(deltaX, deltaY) {
+  if (!isPovMode || isLightPanelOpen) return;
+  const sensitivity = 0.0032;
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y -= deltaX * sensitivity;
+  camera.rotation.x -= deltaY * sensitivity;
+  camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x, -Math.PI * 0.46, Math.PI * 0.46);
 }
 
 if (closeLightPanel) {
@@ -436,6 +496,61 @@ if (lightColor) {
     downlightState.tint = lightColor.value;
     applyDownlightState();
   });
+}
+
+if (mobileExitPovButton) {
+  mobileExitPovButton.addEventListener('click', () => exitPovMode());
+}
+
+if (mobileLightButton) {
+  mobileLightButton.addEventListener('click', () => {
+    if (!isPovMode) return;
+    openDownlightSettingsFromSwitch();
+  });
+}
+
+if (mobilePovControls) {
+  for (const button of mobilePovControls.querySelectorAll('[data-move]')) {
+    const key = button.dataset.move;
+    const setPressed = (isPressed) => {
+      if (!isPovMode || isLightPanelOpen) return;
+      movement[key] = isPressed;
+    };
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      setPressed(true);
+    });
+    button.addEventListener('pointerup', (event) => {
+      event.preventDefault();
+      setPressed(false);
+    });
+    button.addEventListener('pointercancel', () => setPressed(false));
+    button.addEventListener('lostpointercapture', () => setPressed(false));
+  }
+}
+
+if (mobileLookPad) {
+  mobileLookPad.addEventListener('pointerdown', (event) => {
+    if (!isPovMode || isLightPanelOpen) return;
+    event.preventDefault();
+    mobileLookPointerId = event.pointerId;
+    mobileLookLastX = event.clientX;
+    mobileLookLastY = event.clientY;
+    mobileLookPad.setPointerCapture(event.pointerId);
+  });
+  mobileLookPad.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== mobileLookPointerId) return;
+    event.preventDefault();
+    rotatePovCamera(event.clientX - mobileLookLastX, event.clientY - mobileLookLastY);
+    mobileLookLastX = event.clientX;
+    mobileLookLastY = event.clientY;
+  });
+  const clearMobileLook = (event) => {
+    if (event.pointerId === mobileLookPointerId) mobileLookPointerId = null;
+  };
+  mobileLookPad.addEventListener('pointerup', clearMobileLook);
+  mobileLookPad.addEventListener('pointercancel', clearMobileLook);
 }
 
 function updateMovementState(event, isPressed) {
@@ -494,7 +609,7 @@ renderer.domElement.addEventListener('click', (event) => {
     toggleDownlightsFromSwitch();
     return;
   }
-  if (!povControls.isLocked && !isLightPanelOpen) {
+  if (!isTouchLikeDevice && !povControls.isLocked && !isLightPanelOpen) {
     event.preventDefault();
     requestPovPointerLock({ exitOnFailure: false });
   }
@@ -581,6 +696,26 @@ const materials = {
     emissive: 0x2448ff,
     emissiveIntensity: 2.3,
     roughness: 0.35,
+  }),
+  ledWarm: new THREE.MeshStandardMaterial({
+    color: 0xff8a3d,
+    emissive: 0xff6d2a,
+    emissiveIntensity: 1.8,
+    roughness: 0.32,
+  }),
+  ledCyan: new THREE.MeshStandardMaterial({
+    color: 0x35d7ff,
+    emissive: 0x18baf2,
+    emissiveIntensity: 1.65,
+    roughness: 0.34,
+  }),
+  ledCyanFloorGlow: new THREE.MeshBasicMaterial({
+    color: 0x16b8ff,
+    transparent: true,
+    opacity: 0.34,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
   }),
   warmLight: new THREE.MeshStandardMaterial({
     color: 0xfff0cf,
@@ -967,7 +1102,14 @@ const office = new THREE.Group();
 const lounge = new THREE.Group();
 const exterior = new THREE.Group();
 const cutawayWallMeshes = [];
+const floorplaneHiddenObjects = [];
 scene.add(exterior, room, office, lounge);
+
+function registerFloorplaneHidden(object) {
+  floorplaneHiddenObjects.push(object);
+  object.visible = !sim4FloorplaneEnabled;
+  return object;
+}
 
 function registerCutawayWall(mesh, side, cutawayMaterial) {
   mesh.userData.cutawaySide = side;
@@ -976,6 +1118,7 @@ function registerCutawayWall(mesh, side, cutawayMaterial) {
   mesh.userData.originalCastShadow = mesh.castShadow;
   mesh.userData.originalReceiveShadow = mesh.receiveShadow;
   cutawayWallMeshes.push(mesh);
+  registerFloorplaneHidden(mesh);
   return mesh;
 }
 
@@ -1085,6 +1228,7 @@ function addRoomShell() {
   ceilingMesh.castShadow = true;
   ceilingMesh.receiveShadow = true;
   ceilingMesh.userData.currentMaterial = 'ceilingCutaway';
+  registerFloorplaneHidden(ceilingMesh);
   room.add(ceilingMesh);
 
   const ceilingLines = [];
@@ -1092,7 +1236,7 @@ function addRoomShell() {
     const y = heightAtZ(z) - 0.012;
     ceilingLines.push(new THREE.Vector3(xMin, y, z), new THREE.Vector3(xMax, y, z));
   }
-  addLineSegments(room, ceilingLines, materials.ceilingGroove);
+  registerFloorplaneHidden(addLineSegments(room, ceilingLines, materials.ceilingGroove));
 
   const wallLines = [];
   for (let x = xMin + 0.15; x < xMax; x += 0.18) {
@@ -1111,7 +1255,7 @@ function addRoomShell() {
     wallLines.push(new THREE.Vector3(xMin + 0.006, 0.01, z), new THREE.Vector3(xMin + 0.006, wallTopAtZ(z) - 0.02, z));
     wallLines.push(new THREE.Vector3(xMax - 0.006, 0.01, z), new THREE.Vector3(xMax - 0.006, wallTopAtZ(z) - 0.02, z));
   }
-  addLineSegments(room, wallLines, materials.wallGroove);
+  registerFloorplaneHidden(addLineSegments(room, wallLines, materials.wallGroove));
 
   addSlidingDoor();
   addLightSwitch();
@@ -1140,6 +1284,7 @@ function addSlidingDoor() {
   addBox(door, 'door-right-frame', { x: doorFrameWidth, y: doorOpeningTop, z: doorFrameDepth }, { x: doorOpeningHalfWidth - doorFrameWidth / 2, y: doorOpeningTop / 2, z: doorZ }, railMat);
   addBox(door, 'door-centre-frame', { x: doorFrameWidth, y: glassHeight, z: doorFrameDepth * 0.88 }, { x: 0, y: glassY, z: doorZ - 0.006 }, railMat);
   addBox(door, 'roller-blind-box', { x: 2.05, y: 0.09, z: 0.12 }, { x: 0, y: 2.22, z: zFront + 0.035 }, railMat);
+  registerFloorplaneHidden(door);
   room.add(door);
 }
 
@@ -1165,6 +1310,7 @@ function addLightSwitch() {
     false,
   );
   lightSwitchTargets.push(plate, lightSwitchRocker);
+  registerFloorplaneHidden(switchGroup);
   room.add(switchGroup);
   updateLightSwitchVisual();
 }
@@ -1179,9 +1325,11 @@ function addDownlights() {
       const y = heightAtZ(z) - 0.018;
       const disk = addCylinder(room, 'philips-hue-recessed-downlight', 0.078, 0.018, { x, y, z }, materials.warmLight, 56, false);
       disk.quaternion.setFromUnitVectors(baseNormal, normal);
+      registerFloorplaneHidden(disk);
       downlightDisks.push(disk);
       const trim = addCylinder(room, 'black-downlight-trim', 0.096, 0.012, { x, y: y + 0.002, z }, materials.black, 56, false);
       trim.quaternion.setFromUnitVectors(baseNormal, normal);
+      registerFloorplaneHidden(trim);
       const light = new THREE.PointLight(0xffd9a1, baseDownlightIntensity, 5.2, 1.65);
       light.position.set(x, y - 0.28, z);
       light.castShadow = true;
@@ -1461,11 +1609,11 @@ function addExterior() {
   registerCutawayWall(addSlopedSideWall(exterior, 'office-end-exterior-wall-thickness', xMin, -1, materials.exteriorWall), 'left', materials.exteriorWallCutaway);
   registerCutawayWall(addSlopedSideWall(exterior, 'lounge-end-exterior-wall-thickness', xMax, 1, materials.exteriorWall), 'right', materials.exteriorWallCutaway);
 
-  addBox(exterior, 'outer-front-wall-cap', { x: shellLength, y: topFrameThickness, z: shellDepth }, { x: 0, y: hFront + topFrameThickness / 2, z: frontShellZ }, edgeMat, false);
-  addBox(exterior, 'outer-back-wall-cap', { x: shellLength, y: topFrameThickness, z: shellDepth }, { x: 0, y: hBack + topFrameThickness / 2, z: backShellZ }, edgeMat, false);
-  const officeCap = addBox(exterior, 'outer-office-end-cap', { x: wallThickness + 0.04, y: 0.08, z: W + wallThickness * 2 }, { x: xMin - wallThickness / 2, y: sideCapY, z: 0 }, edgeMat, false);
+  registerFloorplaneHidden(addBox(exterior, 'outer-front-wall-cap', { x: shellLength, y: topFrameThickness, z: shellDepth }, { x: 0, y: hFront + topFrameThickness / 2, z: frontShellZ }, edgeMat, false));
+  registerFloorplaneHidden(addBox(exterior, 'outer-back-wall-cap', { x: shellLength, y: topFrameThickness, z: shellDepth }, { x: 0, y: hBack + topFrameThickness / 2, z: backShellZ }, edgeMat, false));
+  const officeCap = registerFloorplaneHidden(addBox(exterior, 'outer-office-end-cap', { x: wallThickness + 0.04, y: 0.08, z: W + wallThickness * 2 }, { x: xMin - wallThickness / 2, y: sideCapY, z: 0 }, edgeMat, false));
   officeCap.rotation.x = sideCapAngle;
-  const loungeCap = addBox(exterior, 'outer-lounge-end-cap', { x: wallThickness + 0.04, y: 0.08, z: W + wallThickness * 2 }, { x: xMax + wallThickness / 2, y: sideCapY, z: 0 }, edgeMat, false);
+  const loungeCap = registerFloorplaneHidden(addBox(exterior, 'outer-lounge-end-cap', { x: wallThickness + 0.04, y: 0.08, z: W + wallThickness * 2 }, { x: xMax + wallThickness / 2, y: sideCapY, z: 0 }, edgeMat, false));
   loungeCap.rotation.x = sideCapAngle;
 }
 
@@ -1665,6 +1813,10 @@ function addPottedPlant(group, pos, scale = 0.12) {
 
 function addLounge() {
   addMonitor(lounge, 'large-wall-mounted-oled-gaming-tv', { x: 2.05, y: 1.36, z: zFront + 0.055 }, 1.56, 0.86, Math.PI / 2, 'tv');
+  addBox(lounge, 'warm-led-strip-behind-tv-top', { x: 1.72, y: 0.026, z: 0.018 }, { x: 2.05, y: 1.84, z: zFront + 0.028 }, materials.ledWarm, false, false);
+  addBox(lounge, 'warm-led-strip-behind-tv-bottom', { x: 1.72, y: 0.026, z: 0.018 }, { x: 2.05, y: 0.88, z: zFront + 0.028 }, materials.ledWarm, false, false);
+  addBox(lounge, 'warm-led-strip-behind-tv-left', { x: 0.026, y: 0.94, z: 0.018 }, { x: 1.18, y: 1.36, z: zFront + 0.028 }, materials.ledWarm, false, false);
+  addBox(lounge, 'warm-led-strip-behind-tv-right', { x: 0.026, y: 0.94, z: 0.018 }, { x: 2.92, y: 1.36, z: zFront + 0.028 }, materials.ledWarm, false, false);
   addBox(lounge, 'dark-walnut-media-unit-top', { x: 1.9, y: 0.08, z: 0.38 }, { x: 2.05, y: 0.46, z: zFront + 0.25 }, materials.walnut);
   addBox(lounge, 'matte-black-media-unit-body', { x: 1.9, y: 0.36, z: 0.35 }, { x: 2.05, y: 0.24, z: zFront + 0.24 }, materials.graphite);
   addBox(lounge, 'soundbar', { x: 0.9, y: 0.045, z: 0.07 }, { x: 2.05, y: 0.5225, z: zFront + 0.05 }, materials.black);
@@ -1677,6 +1829,8 @@ function addLounge() {
   addBox(lounge, 'charcoal-couch-back', { x: 1.86, y: 0.74, z: 0.18 }, { x: 2.05, y: 0.72, z: 1.46 }, materials.fabric);
   addBox(lounge, 'charcoal-couch-left-arm', { x: 0.18, y: 0.55, z: 0.78 }, { x: 1.05, y: 0.54, z: 1.04 }, materials.fabric);
   addBox(lounge, 'charcoal-couch-right-arm', { x: 0.18, y: 0.55, z: 0.78 }, { x: 2.88, y: 0.54, z: 1.04 }, materials.fabric);
+  addBox(lounge, 'cyan-led-floor-strip-behind-couch', { x: 1.84, y: 0.026, z: 0.035 }, { x: 2.05, y: 0.016, z: 1.61 }, materials.ledCyan, false, false);
+  addBox(lounge, 'cyan-floor-glow-behind-couch-only', { x: 1.94, y: 0.004, z: 0.12 }, { x: 2.05, y: 0.006, z: 1.625 }, materials.ledCyanFloorGlow, false, false);
   for (const x of [1.55, 2.05, 2.55]) {
     addBox(lounge, 'separate-couch-cushion', { x: 0.47, y: 0.035, z: 0.68 }, { x, y: 0.49, z: 1.02 }, materials.fabric);
   }
@@ -1748,6 +1902,25 @@ function setupLights() {
   tvScreenLight.userData.darkIntensity = 1.1;
   scene.add(tvScreenLight);
   screenGlowLights.push(tvScreenLight);
+
+  const tvBacklight = new THREE.PointLight(0xff7a2c, 0.5, 2.4, 1.7);
+  tvBacklight.name = 'warm-tv-led-backlight-glow';
+  tvBacklight.position.set(2.05, 1.36, zFront + 0.22);
+  tvBacklight.userData.dayIntensity = 0.5;
+  tvBacklight.userData.darkIntensity = 1.45;
+  scene.add(tvBacklight);
+  accentGlowLights.push(tvBacklight);
+
+  const couchBacklight = new THREE.SpotLight(0x24cfff, 0.42, 2.2, Math.PI * 0.16, 0.9, 1.8);
+  couchBacklight.name = 'cyan-couch-led-backlight-glow';
+  couchBacklight.position.set(2.05, 0.08, 1.62);
+  couchBacklight.target.position.set(2.05, 0.92, zBack - 0.004);
+  couchBacklight.userData.dayIntensity = 0.42;
+  couchBacklight.userData.darkIntensity = 1.35;
+  couchBacklight.castShadow = true;
+  couchBacklight.shadow.mapSize.set(512, 512);
+  scene.add(couchBacklight, couchBacklight.target);
+  accentGlowLights.push(couchBacklight);
 }
 
 function setOrbitCamera() {
@@ -1770,6 +1943,16 @@ function getBackyardExteriorState() {
   };
 }
 
+function getAccentLedState() {
+  return {
+    meshNames: getSceneObjectBounds()
+      .map((item) => item.name)
+      .filter((name) => name.includes('led-strip-behind-tv') || name.includes('led-floor-strip-behind-couch') || name.includes('floor-glow-behind-couch')),
+    lightNames: accentGlowLights.map((light) => light.name),
+    intensities: accentGlowLights.map((light) => light.intensity),
+  };
+}
+
 addExteriorGrass();
 addExterior();
 addWoodenStep();
@@ -1781,6 +1964,7 @@ setupLights();
 applyDownlightState();
 setOrbitCamera();
 setWallCutawayButtonActive(wallCutawayEnabled);
+setSim4ButtonActive(sim4FloorplaneEnabled);
 updateCutawayWalls();
 
 window.addEventListener('resize', () => {
@@ -1816,6 +2000,8 @@ window.__podDebug = {
   },
   isPovMode: () => isPovMode,
   isPovLocked: () => povControls.isLocked,
+  isTouchLikeDevice: () => isTouchLikeDevice,
+  isMobilePovControlsVisible: () => Boolean(mobilePovControls && !mobilePovControls.hidden),
   isOrbitEnabled: () => orbitControls.enabled,
   getPovEyeHeight: () => POV_EYE_HEIGHT,
   getPovBounds: () => ({ ...POV_BOUNDS }),
@@ -1835,8 +2021,18 @@ window.__podDebug = {
   getSceneObjectBounds,
   getExteriorGrassState,
   getBackyardExteriorState,
+  getAccentLedState,
   isWallCutawayEnabled: () => wallCutawayEnabled,
   setWallCutawayEnabled,
+  isSim4FloorplaneEnabled: () => sim4FloorplaneEnabled,
+  setSim4FloorplaneEnabled,
+  getSim4FloorplaneState: () => ({
+    enabled: sim4FloorplaneEnabled,
+    hiddenObjectCount: floorplaneHiddenObjects.filter((object) => !object.visible).length,
+    registeredObjectCount: floorplaneHiddenObjects.length,
+    visibleWallCount: cutawayWallMeshes.filter((mesh) => mesh.visible).length,
+    ceilingVisible: Boolean(ceilingMesh?.visible),
+  }),
   getDownlightIntensities: () => downlightLights.map((light) => light.intensity),
   getDownlightColorHex: () => (downlightLights[0] ? `#${downlightLights[0].color.getHexString()}` : null),
   setDownlightsOn: (isOn) => {
@@ -1852,6 +2048,7 @@ window.__podDebug = {
     door: doorLight?.intensity ?? null,
     screens: screenGlowLights.map((light) => light.intensity),
     shelves: shelfGlowLights.map((light) => light.intensity),
+    accents: accentGlowLights.map((light) => light.intensity),
   }),
   aimAtLightSwitch: () => {
     camera.position.set(-1.28, POV_EYE_HEIGHT, -0.78);
